@@ -96,9 +96,13 @@ function! unreal#set_project_dir(project_dir, ...) abort
         if l:proj_was_set
             let l:sln_files = glob(g:unreal_project_dir.s:dirsep."*.sln", 0, 1)
             if !empty(l:sln_files)
-                execute "VimcrosoftSetSln ".fnameescape(l:sln_files[0])
-
-				call unreal#generate_vimcrosoft_extra_args(l:sln_files[0])
+                " Vimcrosoft might have auto-found the same solution, already, 
+                " in which case we don't have to set it.
+                if g:vimcrosoft_current_sln != l:sln_files[0]
+                    execute "VimcrosoftSetSln ".fnameescape(l:sln_files[0])
+                endif
+                " Make sure we have our extra compiler args ready.
+                call unreal#generate_vimcrosoft_extra_args(l:sln_files[0])
             endif
         else
             execute "VimcrosoftUnsetSln"
@@ -124,34 +128,34 @@ endfunction
 let s:extra_args_version = 1
 
 function! unreal#generate_vimcrosoft_extra_args(solution) abort
-	let l:argfile = 
-				\fnamemodify(a:solution, ':p:h').s:dirsep.
-				\'.vimcrosoft'.s:dirsep.
-				\fnamemodify(a:solution, ':t').'.flags'
+    let l:argfile = 
+                \fnamemodify(a:solution, ':p:h').s:dirsep.
+                \'.vimcrosoft'.s:dirsep.
+                \fnamemodify(a:solution, ':t').'.flags'
 
-	let l:do_regen = 0
-	let l:version_line = "# version ".string(s:extra_args_version)
-	try
-		call unreal#trace("Checking for extra clang args file: ".l:argfile)
-		let l:lines = readfile(l:argfile)
-		if len(l:lines) < 1
-			call unreal#trace("Extra clang args file is empty... regenerating")
-			let l:do_regen = 1
-		elseif trim(l:lines[0]) != l:version_line
-			call unreal#trace("Extra clang args file is outdated... regenerating")
-			let l:do_regen = 1
-		endif
-	catch
-		call unreal#trace("Extra clang args file doesn't exist... regenerating")
-		let l:do_regen = 1
-	endtry
-	if l:do_regen
-		let l:arglines = [
-					\l:version_line,
-					\"-DUNREAL_CODE_ANALYZER"
-					\]
-		call writefile(l:arglines, l:argfile)
-	endif
+    let l:do_regen = 0
+    let l:version_line = "# version ".string(s:extra_args_version)
+    try
+        call unreal#trace("Checking for extra clang args file: ".l:argfile)
+        let l:lines = readfile(l:argfile)
+        if len(l:lines) < 1
+            call unreal#trace("Extra clang args file is empty... regenerating")
+            let l:do_regen = 1
+        elseif trim(l:lines[0]) != l:version_line
+            call unreal#trace("Extra clang args file is outdated... regenerating")
+            let l:do_regen = 1
+        endif
+    catch
+        call unreal#trace("Extra clang args file doesn't exist... regenerating")
+        let l:do_regen = 1
+    endtry
+    if l:do_regen
+        let l:arglines = [
+                    \l:version_line,
+                    \"-DUNREAL_CODE_ANALYZER"
+                    \]
+        call writefile(l:arglines, l:argfile)
+    endif
 endfunction
 
 " }}}
