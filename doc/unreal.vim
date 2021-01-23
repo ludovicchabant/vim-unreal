@@ -1,0 +1,229 @@
+*unreal.txt*  Work with Unreal Engine in Vim
+
+
+          █    ██  ███▄    █  ██▀███  ▓█████ ▄▄▄       ██▓    
+          ██  ▓██▒ ██ ▀█   █ ▓██ ▒ ██▒▓█   ▀▒████▄    ▓██▒    
+         ▓██  ▒██░▓██  ▀█ ██▒▓██ ░▄█ ▒▒███  ▒██  ▀█▄  ▒██░    
+         ▓▓█  ░██░▓██▒  ▐▌██▒▒██▀▀█▄  ▒▓█  ▄░██▄▄▄▄██ ▒██░    
+         ▒▒█████▓ ▒██░   ▓██░░██▓ ▒██▒░▒████▒▓█   ▓██▒░██████▒
+         ░▒▓▒ ▒ ▒ ░ ▒░   ▒ ▒ ░ ▒▓ ░▒▓░░░ ▒░ ░▒▒   ▓▒█░░ ▒░▓  ░
+         ░░▒░ ░ ░ ░ ░░   ░ ▒░  ░▒ ░ ▒░ ░ ░  ░ ▒   ▒▒ ░░ ░ ▒  ░
+          ░░░ ░ ░    ░   ░ ░   ░░   ░    ░    ░   ▒     ░ ░   
+            ░              ░    ░        ░  ░     ░  ░    ░  ░
+
+
+                             VIM-UNREAL
+
+                                                                      *unreal*
+
+==============================================================================
+                                                         *unreal-introduction*
+Introduction
+
+Vim-unreal is a plugin that lets you work with game codebases that use Unreal
+Engine. In most cases, you should be able to launch, say, `gvim` from
+somewhere inside your codebase, and it should "just work". You'll be able to
+run commands such as |UnrealGenerateProjectFiles| and |UnrealBuild|. It is
+recommended to install vim-dispatch for running these operations in the
+background.
+
+If you install the vim-crosoft plugin, vim-unreal will also automatically set
+the root Visual Studio solution as the active solution. This will bring
+better file-listing support for file-listers supported by vim-crosoft (FZF is
+recommended), clangd language server support (YouCompleteMe is recommended),
+and so on. For supporting other infrastructures, refer to the vim-crosoft
+plugin or other appropriate plugin.
+
+==============================================================================
+                                                        *unreal-configuration*
+Configuration
+
+                                                              *g:unreal_trace*
+g:unreal_trace
+                  Enables debugging information.
+                  Default: `0`
+
+                                                  *g:unreal_branch_dir_marker*
+g:unreal_branch_dir_marker
+                  How vim-unreal detects the root directory of an Unreal
+                  codebase branch. This should be a glob pattern that matches
+                  something when a given directory is an Unreal codebase.
+                  Default: `*.uprojectdirs`
+
+                                                  *g:unreal_branch_dir_finder*
+g:unreal_branch_dir_finder
+                  The name of a function that lets vim-unreal find the list
+                  of projects in a branch.
+                  Default: `''`
+
+                  The default finder looks for a marker defined by the glob
+                  pattern |g:unreal_branch_dir_marker|.
+
+                                                  *g:unreal_auto_find_project*
+g:unreal_auto_find_project
+                  Whether vim-unreal should try to detect an Unreal branch
+                  on startup and find an appropriate project to set.
+                  Vim-unreal saves the last set project of each known branch
+                  so that after restarting Vim it can restore the same project
+                  as last time.
+                  Default: `0`
+                  
+                                                 *g:unreal_auto_build_modules*
+g:unreal_auto_build_modules
+                  Dictionary of Unreal modules to always automatically build 
+                  along with the current project's main module when running 
+                  the |UnrealBuild| command and associated commands.
+                  The dictionary should map a module's name with a list of
+                  build options (if any).
+                  Default:
+                     `{"ShaderCompileWorker": ["-Quiet"]}`
+
+                                                 *g:unreal_auto_build_options*
+g:unreal_auto_build_options
+                  A list of default build options to pass to UnrealBuildTool
+                  when running the |UnrealBuild| command and associated
+                  commands.
+                  Default:
+                     `["-WaitMutex"]`
+
+                                 *g:unreal_auto_generate_compilation_database*
+let g:unreal_auto_generate_compilation_database
+                  Whether to automatically generate the clang compilation
+                  database when running |UnrealGenerateProjectFiles|.
+                  See |UnrealGenerateCompilationDatabase| for more
+                  information.
+
+                                                          *g:unreal_platforms*
+g:unreal_platforms
+                  Known list of platforms.
+                  Mainly used for auto-completion.
+                  Default: 
+                     `["Win32", "Win64", "HoloLens", "Mac", "XboxOne", "PS4",`
+                     ` "IOS", "Android", "HTML5", "Linux", "AllDesktop",`
+                     ` "TVOS", "Switch"]`
+
+                                                      *g:unreal_config_states*
+g:unreal_config_states
+                  Known list of configuration states.
+                  Mainly used for auto-completion.
+                  Default:
+                     `["Debug", "DebugGame", "Development", "Shipping",`
+                     ` "Test"]`
+
+                                                     *g:unreal_config_targets*
+g:unreal_config_targets
+                  Known list of configuration targets.
+                  Mainly used for auto-completion.
+                  Default:
+                     `["", "Editor", "Client", "Server"]`
+
+                                                      *g:unreal_build_options*
+g:unreal_build_options
+                  Known list of UnrealBuildTool options.
+                  Mainly used for auto-completion.
+                  Default:
+                     `["-DisableUnity", "-ForceUnity"]`
+
+==============================================================================
+                                                             *unreal-commands*
+Commands
+
+                                                          *:UnrealFindProject*
+:UnrealFindProject
+                  Uses the current working directory (see |getcwd()|) to
+                  detect an Unreal codebase branch and a default project to
+                  set (see |UnrealSetBranchDir| and |UnrealSetProject|).
+
+                                                         *:UnrealSetBranchDir*
+:UnrealSetBranchDir {dir}
+                  Sets the current branch to the given directory.
+
+                                                           *:UnrealSetProject*
+:UnrealSetProject {projectname}
+                  Sets the current project to the one matching the given name.
+
+                                                          *:UnrealSetPlatform*
+:UnrealSetPlatform {platform}
+                  Sets the current platform.
+
+                                                            *:UnrealSetConfig*
+:UnrealSetConfig {config}
+                  Sets the current configuration.
+                  Vim-unreal will attempt to parse the state and target from
+                  the given configuration name.
+
+                                                 *:UnrealGenerateProjectFiles*
+:UnrealGenerateProjectFiles
+                  Regenerates the Visual Studio project files.
+
+                                                                *:UnrealBuild*
+:UnrealBuild {project} {platform} {config}
+                  Builds the currently set project using the currently set
+                  platform and configuration.
+                  If the project, platform, and/or configuration are provided
+                  in the command invocation, use those instead of the
+                  currently set ones.
+                  If the vim-dispatch plugin is installed, vim-unreal will
+                  favour using |:Make| instead of |:make|, so that the build
+                  job is run in the background.
+
+                                                              *:UnrealRebuild*
+:UnrealRebuild {project} {platform} {config}
+                  Like |:UnrealBuild|, but does a full rebuild.
+
+                                                                *:UnrealClean*
+:UnrealClean {project} {platform} {config}
+                  Like |:UnrealBuild|, but cleans the build artifacts instead.
+
+                                          *:UnrealGenerateCompilationDatabase*
+:UnrealGenerateCompilationDatabase
+                  Generates a clang compilation database for use with language
+                  server plugins like YouCompleteMe.
+                  If the vim-dispatch plugin is installed, vim-unreal will
+                  favour using |:Make| instead of |:make|, so that the build
+                  job is run in the background.
+
+                                                 *:UnrealReloadBranchProjects*
+:UnrealReloadBranchProjects
+                  Reloads the branch's projects. This is only needed if the
+                  codebase was updated without restarting Vim and vim-unreal's
+                  knowledge of the projects was outdated.
+
+==============================================================================
+                                                            *unreal-internals*
+Internals
+
+                                                    *g:unreal_branch_projects*
+g:unreal_branch_projects
+                  A dictionary mapping known projects in the current branch
+                  with their properties loaded from their JSON `uproject` file.
+                  If these files have changed, you can reload this with the
+                  |UnrealReloadBranchProjects| command.
+
+                                                         *g:unreal_branch_dir*
+g:unreal_branch_dir
+                  The currently set Unreal codebase root directory.
+                  It can be set with the |UnrealSetBranchDir| command.
+
+                                                            *g:unreal_project*
+g:unreal_project
+                  The currently set Unreal project's name.
+                  It can be set with the |UnrealSetProject| command.
+
+                                                           *g:unreal_platform*
+g:unreal_platform
+                  The currently set Unreal platform.
+                  It can be set with the |UnrealSetPlatform| command.
+
+                                                       *g:unreal_config_state*
+g:unreal_config_state
+                  The currently set Unreal configuration state.
+                  It can be set with the |UnrealSetConfig| command.
+
+                                                      *g:unreal_config_target*
+g:unreal_config_target
+                  The currently set Unreal configuration target.
+                  It can be set with the |UnrealSetConfig| command.
+
+
+" vim:tw=78:et:ft=help:norl:
