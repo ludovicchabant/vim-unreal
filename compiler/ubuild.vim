@@ -9,15 +9,32 @@ let current_compiler = "ubuild"
 
 let s:keepcpo = &cpo
 
-let s:prgpath = unreal#get_script_path("Engine/Build/BatchFiles/Build")
-let s:prgargs = get(g:, "unreal_temp_makeprg_args__", "")
-if !empty(s:prgargs)
-    let s:prgargs = '\ '.join(s:prgargs, '\ ')
+let s:scriptname = get(g:, '__unreal_makeprg_script', 'Build')
+let s:prgpath = shellescape(
+            \unreal#get_script_path("Engine/Build/BatchFiles/".s:scriptname))
+let s:prgargs = map(
+            \copy(get(g:, '__unreal_makeprg_args', [])),
+            \{idx, val -> escape(val, ' \"')})
+let s:prgcmdline = fnameescape(s:prgpath).'\ '.join(s:prgargs, '\ ')
+
+call unreal#trace("Setting makeprg to: ".s:prgcmdline)
+
+if !get(g:, 'unreal_debug_build', 0)
+    execute "CompilerSet makeprg=".s:prgcmdline
+else
+    execute "CompilerSet makeprg=echo\\ ".shellescape(s:prgcmdline)
 endif
-call unreal#trace("Setting makeprg to: ".s:prgpath.s:prgargs)
-execute "CompilerSet makeprg=".fnameescape(s:prgpath).s:prgargs
 
 CompilerSet errorformat&
+
+" Set the MSBuild error format on Windows.
+"if has('win32') || has('win64')
+"    execute "CompilerSet errorformat=".vimcrosoft#get_msbuild_errorformat()
+"    echom "Set errorformat from vimcrosoft!"
+"    echom &errorformat
+"else
+"    echom "Not setting error format"
+"endif
 
 let &cpo = s:keepcpo
 unlet s:keepcpo
