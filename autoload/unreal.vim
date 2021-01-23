@@ -441,19 +441,19 @@ endfunction
 function! unreal#build(bang, ...) abort
     let g:__unreal_makeprg_script = "Build"
     let g:__unreal_makeprg_args = call('unreal#get_ubt_args', a:000)
-    call unreal#run_make("ubuild", bang)
+    call unreal#run_make("ubuild", a:bang)
 endfunction
 
-function! unreal#rebuild(...) abort
+function! unreal#rebuild(bang, ...) abort
     let g:__unreal_makeprg_script = "Rebuild"
     let g:__unreal_makeprg_args = call('unreal#get_ubt_args', a:000)
-    call unreal#run_make("ubuild")
+    call unreal#run_make("ubuild", a:bang)
 endfunction
 
-function! unreal#clean(...) abort
+function! unreal#clean(bang, ...) abort
     let g:__unreal_makeprg_script = "Clean"
     let g:__unreal_makeprg_args = call('unreal#get_ubt_args', a:000)
-    call unreal#run_make("ubuild")
+    call unreal#run_make("ubuild", a:bang)
 endfunction
 
 function! unreal#generate_compilation_database() abort
