@@ -27,12 +27,18 @@ run commands such as |UnrealGenerateProjectFiles| and |UnrealBuild|. It is
 recommended to install vim-dispatch for running these operations in the
 background.
 
-If you install the vim-crosoft plugin, vim-unreal will also automatically set
-the root Visual Studio solution as the active solution. This will bring
-better file-listing support for file-listers supported by vim-crosoft (FZF is
+If you have vim-crosoft installed, vim-unreal will also automatically set the
+root Visual Studio solution as the active solution. This will bring better
+file-listing support for file-listers supported by vim-crosoft (FZF is
 recommended), clangd language server support (YouCompleteMe is recommended),
 and so on. For supporting other infrastructures, refer to the vim-crosoft
 plugin or other appropriate plugin.
+
+It is recommended that you add |unreal#statusline()| to your 'statusline'
+manager or configuration. For example, if you use vim-lightline, you would do:
+
+      :let g:lightline['component_function']['unreal'] = 'unreal#statusline'
+      :call add(g:lightline['active']['right'], ['unreal'])
 
 ==============================================================================
                                                         *unreal-configuration*
@@ -67,7 +73,7 @@ g:unreal_auto_find_project
                   so that after restarting Vim it can restore the same project
                   as last time.
                   Default: `0`
-                  
+
                                                  *g:unreal_auto_build_modules*
 g:unreal_auto_build_modules
                   Dictionary of Unreal modules to always automatically build 
@@ -190,6 +196,18 @@ Commands
                   knowledge of the projects was outdated.
 
 ==============================================================================
+                                                            *unreal-functions*
+Functions
+
+                                                           *unreal#statusline*
+unreal#statusline
+                  Returns a string appropriate for showing in your
+                  'statusline'. The string is empty if vim-unreal hasn't
+                  detected any Unreal Engine codebase. Otherwise, it shows
+                  a variety of relevant information such as the branch root
+                  directory, and the currently set project and configuration.
+
+==============================================================================
                                                             *unreal-internals*
 Internals
 
@@ -226,4 +244,4 @@ g:unreal_config_target
                   It can be set with the |UnrealSetConfig| command.
 
 
-" vim:tw=78:et:ft=help:norl:
+" vim:tw=78:sw=3:ts=3:et:ft=help:norl:
