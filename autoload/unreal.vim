@@ -81,15 +81,15 @@ endfunction
 
 " Branch and Project Management {{{
 
-function! unreal#find_branch_dir_and_project() abort
-    call unreal#find_branch_dir()
+function! unreal#find_branch_dir_and_project(silent) abort
+    call unreal#find_branch_dir(a:silent)
 
     if !empty(g:unreal_branch_dir)
         call unreal#find_project()
     endif
 endfunction
 
-function! unreal#find_branch_dir() abort
+function! unreal#find_branch_dir(silent) abort
     if !empty(g:unreal_branch_dir_finder)
         let l:branch_dir = call(g:unreal_branch_dir_finder)
     else
@@ -99,7 +99,11 @@ function! unreal#find_branch_dir() abort
     if !empty(l:branch_dir)
         call unreal#set_branch_dir(l:branch_dir, 1)  " Set branch silently.
     else
-        call unreal#throw("No UE branch found!")
+        if a:silent
+            call unreal#trace("No UE branch found")
+        else
+            call unreal#throw("No UE branch found!")
+        endif
     endif
 endfunction
 
@@ -586,7 +590,7 @@ endfunction
 
 function! unreal#init() abort
     if g:unreal_auto_find_project
-        call unreal#find_branch_dir_and_project()
+        call unreal#find_branch_dir_and_project(1)
     endif
 endfunction
 
