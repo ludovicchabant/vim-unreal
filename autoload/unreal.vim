@@ -206,12 +206,17 @@ function! unreal#find_project() abort
 endfunction
 
 function! unreal#set_project(projname) abort
-    let g:unreal_project = a:projname
+    let l:clean_projname = trim(a:projname)
+    if !has_key(g:unreal_branch_projects, l:clean_projname)
+        call unreal#throw("No project '".l:clean_projname."' in the current branch. Branch projects are: ".string(keys(g:unreal_branch_projects)))
+    endif
+
+    let g:unreal_project = l:clean_projname
 
     let l:cached_proj_file = unreal#get_cache_path("LastProject.txt", 1) " Auto-create cache dir.
-    call writefile([a:projname], l:cached_proj_file)
+    call writefile([l:clean_projname], l:cached_proj_file)
 
-    call unreal#trace("Set UE project: ".a:projname)
+    call unreal#trace("Set UE project: ".l:clean_projname)
 endfunction
 
 function! unreal#get_branch_projects(branch_dir)
