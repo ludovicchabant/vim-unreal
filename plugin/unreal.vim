@@ -32,7 +32,7 @@ let g:unreal_config_states = get(g:, 'unreal_config_states', [
             \"Debug", "DebugGame", "Development", "Shipping", "Test"
             \])
 let g:unreal_config_targets = get(g:, 'unreal_config_targets', [
-            \"", "Editor", "Client", "Server"
+            \"Editor", "Client", "Server", ""
             \])
 let g:unreal_build_options = get(g:, 'unreal_build_options', [
             \"-DisableUnity", "-ForceUnity"

@@ -282,10 +282,10 @@ endfunction
 let s:extra_args_version = 1
 
 function! unreal#generate_vimcrosoft_extra_args(solution) abort
+    let l:argdir = 
+                \fnamemodify(a:solution, ':p:h').s:dirsep.'.vimcrosoft'
     let l:argfile = 
-                \fnamemodify(a:solution, ':p:h').s:dirsep.
-                \'.vimcrosoft'.s:dirsep.
-                \fnamemodify(a:solution, ':t').'.flags'
+                \l:argdir.s:dirsep.fnamemodify(a:solution, ':t').'.flags'
 
     let l:do_regen = 0
     let l:version_line = "# version ".string(s:extra_args_version)
@@ -304,6 +304,10 @@ function! unreal#generate_vimcrosoft_extra_args(solution) abort
         let l:do_regen = 1
     endtry
     if l:do_regen
+        if !isdirectory(l:argdir)
+            call mkdir(l:argdir)
+        endif
+
         let l:arglines = [
                     \l:version_line,
                     \"-DUNREAL_CODE_ANALYZER"
@@ -317,31 +321,30 @@ endfunction
 " Configuration and Platform {{{
 
 let s:unreal_configs = []
+let s:unreal_configs_map = {}
 
 function! s:cache_unreal_configs() abort
     if len(s:unreal_configs) == 0
         for l:state in g:unreal_config_states
             for l:target in g:unreal_config_targets
-                call add(s:unreal_configs, l:state.l:target)
+                let l:key = l:state.l:target
+                call add(s:unreal_configs, l:key)
+                let s:unreal_configs_map[l:key] = [l:state, l:target]
             endfor
         endfor
     endif
 endfunction
 
 function! s:parse_config_state_and_target(config) abort
-    let l:alen = len(a:config)
+    let l:config = trim(a:config)
 
-    let l:config_target = ""
-    for l:target in g:unreal_config_targets
-        let l:tlen = len(l:target)
-        if l:alen > l:tlen && a:config[l:alen - l:tlen : ] == l:target
-            let l:config_target = l:target
+    for l:key in keys(s:unreal_configs_map)
+        if l:config == l:key
+            let [l:config_state, l:config_target] = s:unreal_configs_map[l:key]
             break
         endif
     endfor
 
-    let l:config_state = a:config[0 : l:alen - t:tlen - 1]
-    
     if index(g:unreal_config_states, l:config_state) >= 0 ||
                 \index(g:unreal_config_targets, l:config_target) >= 0
         return [l:config_state, l:config_target]
@@ -357,7 +360,7 @@ function! unreal#set_config(config) abort
 endfunction
 
 function! unreal#set_platform(platform) abort
-    if index(g:unreal_platforms, a:platform) < 0
+    if index(g:unreal_platforms, trim(a:platform)) < 0
         call unreal#throw("Invalid Unreal platform: ".a:platform)
     endif
     let g:unreal_project_platform = a:platform
