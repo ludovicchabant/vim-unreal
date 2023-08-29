@@ -3,6 +3,11 @@
 
 " Globals {{{
 
+if exists('g:loaded_unreal') || &cp
+  finish
+endif
+let g:loaded_unreal = 1
+
 if !(has('job') || (has('nvim') && exists('*jobwait')))
     echoerr "unreal: this plugin requires the job API from Vim8 or Neovim."
     finish
