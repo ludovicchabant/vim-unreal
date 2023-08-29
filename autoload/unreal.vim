@@ -470,7 +470,7 @@ endfunction
 
 function! unreal#generate_compilation_database() abort
     let g:__unreal_makeprg_script = "Build"
-    let g:__unreal_makeprg_args = unreal#get_ubt_args('', '', '', [], ['-allmodules', '-Mode=GenerateClangDatabase'], 1)
+    let g:__unreal_makeprg_args = unreal#get_ubt_args('', '', '', [], ['-allmodules', '-Mode=GenerateClangDatabase', '-Compiler=Clang'], 1)
     call unreal#run_make("ubuild")
 endfunction
 
