@@ -33,16 +33,20 @@ let g:unreal_platforms = get(g:, 'unreal_platforms', [
             \"Win32", "Win64", "HoloLens", "Mac", "XboxOne", "PS4", "IOS", "Android",
             \"HTML5", "Linux", "AllDesktop", "TVOS", "Switch"
             \])
+let g:unreal_platform_overrides = get(g:, 'unreal_platform_overrides', {
+            \"Editor": ["Win64"],
+            \"Server": ["Win64", "Linux"],
+            \})
 let g:unreal_config_states = get(g:, 'unreal_config_states', [
             \"Debug", "DebugGame", "Development", "Shipping", "Test"
             \])
 let g:unreal_config_targets = get(g:, 'unreal_config_targets', [
-            \"Editor", "Client", "Server", ""
+            \"Client", "Editor", "Game", "Server"
             \])
 let g:unreal_build_options = get(g:, 'unreal_build_options', [
             \"-DisableUnity", "-ForceUnity"
             \])
-let g:unreal_auto_build_modules = get(g:, 'unreal_auto_build_modules', {
+let g:unreal_auto_build_targets = get(g:, 'unreal_auto_build_targets', {
             \"ShaderCompileWorker": ["-Quiet"]
             \})
 let g:unreal_auto_build_options = get(g:, 'unreal_auto_build_options', [

@@ -39,6 +39,10 @@ else
     let s:scriptext = ".sh"
 endif
 
+function! unreal#joinpath(...)
+    return join(a:000, s:dirsep)
+endfunction
+
 " }}}
 
 " Modules {{{
@@ -111,7 +115,7 @@ function! unreal#default_branch_dir_finder(path) abort
     let l:cur = a:path
     let l:prev = ""
     while l:cur != l:prev
-        let l:markers = globpath(l:cur, g:unreal_branch_dir_marker, 0, 1)
+        let l:markers = globpath(l:cur, g:unreal_branch_dir_marker, 1, 1)
         if !empty(l:markers)
             call unreal#trace("Found marker file: ".l:markers[0])
             return l:cur
@@ -219,64 +223,166 @@ function! unreal#set_project(projname) abort
     call unreal#trace("Set UE project: ".l:clean_projname)
 endfunction
 
-function! unreal#get_branch_projects(branch_dir)
+function! unreal#get_branch_project_dirs(branch_dir) abort
     if empty(a:branch_dir)
+        return []
+    endif
+
+    " Find project-dir files.
+    let l:uprojdirfiles = glob(unreal#joinpath(a:branch_dir, "*.uprojectdirs"), 1, 1)
+    if empty(l:uprojdirfiles)
+        return []
+    endif
+
+    " Parse project-dir files.
+    let l:uprojpaths = []
+    for l:uprojdirfile in l:uprojdirfiles
+        call unreal#trace("Parsing uproject directories listing: ".l:uprojdirfile)
+        let l:uprojdir_lines = readfile(l:uprojdirfile)
+        for l:line in l:uprojdir_lines
+            if empty(l:line) || l:line[0] == ';'
+                continue
+            endif
+            " Remove any trailing separator and add it to the list.
+            let l:line_path = fnamemodify(l:line, ':s?[/\\]$??')
+            if !empty(l:line_path)
+                call add(l:uprojpaths, l:line_path)
+            endif
+        endfor
+    endfor
+
+    " Remove duplicates before returning.
+    call uniq(sort(l:uprojpaths))
+    return l:uprojpaths
+endfunction
+
+function! unreal#get_branch_projects(branch_dir) abort
+    " Get the list of directories to search.
+    let l:uprojpaths = unreal#get_branch_project_dirs(a:branch_dir)
+    if empty(l:uprojpaths)
         return {}
     endif
 
-    " Reset the known projects.
+    " Find project files inside these directories.
     let l:projs = {}
-    call unreal#trace("Finding projects in branch: ".a:branch_dir)
+    call unreal#trace(printf("Finding projects in branch: %s (%d search directories)",
+                \a:branch_dir, len(l:uprojpaths)))
     
-    " Find project files in the branch directory.
-    let l:dirs = readdir(a:branch_dir)
-    for l:dir in l:dirs
-        let l:dirpath = a:branch_dir.s:dirsep.l:dir.s:dirsep
-        let l:uprojfiles = glob(l:dirpath."*.uproject", 0, 1)
-        if len(l:uprojfiles) > 0
-            let l:lines = readfile(l:uprojfiles[0])
-            let l:jsonraw = join(l:lines, "\n")
-            let l:json = json_decode(l:jsonraw)
-            let l:json["Path"] = l:uprojfiles[0]
-            let l:projname = fnamemodify(l:uprojfiles[0], ':t:r')
-            let l:projs[l:projname] = l:json
+    for l:search_dir in l:uprojpaths
+        let l:uprojfiles = glob(unreal#joinpath(a:branch_dir, l:search_dir, "*", "*.uproject"), 1, 1)
+        for l:uprojfile in l:uprojfiles
+            let l:json = json_decode(join(readfile(l:uprojfile), "\n"))
+            " Let's add extra properties for our own benefit.
+            let l:json["Path"] = l:uprojfile
+            let l:projdir = fnamemodify(l:uprojfile, ':p:h')
+            let l:json["Dir"] = l:projdir
+            let l:projname = fnamemodify(l:uprojfile, ':t:r')
+            let l:json["Name"] = l:projname
+            " Add the new project structure.
             call unreal#trace("Found project: ".l:projname)
-        endif
+            let l:projs[l:projname] = l:json
+        endfor
     endfor
 
+    call unreal#trace(printf("Found %d projects", len(l:projs)))
     return l:projs
 endfunction
 
-function! unreal#get_project_info(proppath) abort
-    if empty(g:unreal_project) || empty(g:unreal_branch_projects)
+function! unreal#get_project_targets(project) abort
+    if empty(a:project) || empty(g:unreal_branch_projects)
         call unreal#throw("No project(s) set!")
     endif
+    
+    let l:proj = g:unreal_branch_projects[a:project]
+    if !has_key(l:proj, "Targets")
+        " Find targets for this project.
+        let l:targets = {}
+        let l:proj_dir = l:proj["Dir"]
+        call unreal#trace("Looking for build targets in: ".l:proj_dir)
+        let l:target_files = extend(
+                    \glob(unreal#joinpath(l:proj_dir, "Source", "*.Target.cs"), 1, 1),
+                    \glob(unreal#joinpath(l:proj_dir, "Source", "Programs", "*", "*.Target.cs"), 1, 1))
+        for l:target_file in l:target_files
+            " Parse the target file to determine its type (Game, Editor, etc.)
+            call unreal#trace("Parsing target file: ".l:target_file)
+            let l:target_type = ""
+            let l:lines = readfile(l:target_file)
+            for l:line in l:lines
+                let l:match = matchlist(l:line, '\vTargetType\.(\u\l+)')
+                if len(l:match) >= 2
+                    let l:target_type = l:match[1]
+                    break
+                endif
+            endfor
+            " If we got a valid type, add it to the list. Note the double :r
+            " because target files have two extensions (.Target.cs)
+            let l:target_name = fnamemodify(l:target_file, ':t:r:r')
+            if l:target_type != ""
+                let l:targets[l:target_name] = {
+                            \"Name": l:target_name,
+                            \"Path": l:target_file,
+                            \"Type": l:target_type
+                            \}
+            else
+                call unreal#trace(printf("Ignoring target '%s' (%s) because type could not be determined.",
+                            \l:target_name, l:target_file))
+            endif
+        endfor
+        let l:proj["Targets"] = l:targets
+    endif
 
-    let l:proj = g:unreal_branch_projects[g:unreal_project]
+    return l:proj["Targets"]
+endfunction
 
-    let l:cur = l:proj
-    let l:propnames = split(a:proppath, '.')
-    for l:propname in l:propnames
-        if type(l:cur) == type([])
-            let l:cur = l:cur[str2nr(l:propname)]
-        else
-            let l:cur = l:cur[l:propname]
+function! unreal#find_project_target_of_type(project, target_type) abort
+    for l:target in values(unreal#get_project_targets(a:project))
+        if get(l:target, "Type", "") == a:target_type
+            return copy(l:target)
         endif
     endfor
+    return ""
+endfunction
+
+function! unreal#find_project_targets_of_type(project, target_type) abort
+    let l:targets = []
+    for l:target in values(unreal#get_project_targets(a:project))
+        if get(l:target, "Type", "") == a:target_type
+            call add(l:targets, copy(l:target))
+        endif
+    endfor
+    return l:targets
+endfunction
+
+function! unreal#get_build_types_for_target(target_name) abort
+    return copy(g:unreal_config_states)
+endfunction
+
+function! unreal#get_platforms_for_target(target_name) abort
+    return copy(get(g:unreal_platform_overrides, a:target_name, g:unreal_platforms))
 endfunction
 
 function! unreal#find_project_module_of_type(project, module_type) abort
+    let l:mods = unreal#find_project_modules_of_type(a:project, a:module_type)
+    if len(l:mods) > 0
+        return l:mods[0]
+    else
+        return {}
+    endif
+endfunction
+
+function! unreal#find_project_modules_of_type(project, module_type) abort
     if empty(a:project) || empty(g:unreal_branch_projects)
         call unreal#throw("No project(s) set!")
     endif
 
+    let l:mods = []
     let l:proj = g:unreal_branch_projects[a:project]
     for l:module in l:proj["Modules"]
         if get(l:module, "Type", "") == a:module_type
-            return copy(l:module)
+            call add(l:mods, copy(l:module))
         endif
     endfor
-    return {}
+    return l:mods
 endfunction
 
 let s:extra_args_version = 1
@@ -320,43 +426,9 @@ endfunction
 
 " Configuration and Platform {{{
 
-let s:unreal_configs = []
-let s:unreal_configs_map = {}
-
-function! s:cache_unreal_configs() abort
-    if len(s:unreal_configs) == 0
-        for l:state in g:unreal_config_states
-            for l:target in g:unreal_config_targets
-                let l:key = l:state.l:target
-                call add(s:unreal_configs, l:key)
-                let s:unreal_configs_map[l:key] = [l:state, l:target]
-            endfor
-        endfor
-    endif
-endfunction
-
-function! s:parse_config_state_and_target(config) abort
-    let l:config = trim(a:config)
-
-    for l:key in keys(s:unreal_configs_map)
-        if l:config == l:key
-            let [l:config_state, l:config_target] = s:unreal_configs_map[l:key]
-            break
-        endif
-    endfor
-
-    if index(g:unreal_config_states, l:config_state) >= 0 ||
-                \index(g:unreal_config_targets, l:config_target) >= 0
-        return [l:config_state, l:config_target]
-    else
-        call unreal#throw("Invalid config state or target: ".l:config_state.l:config_target)
-    endif
-endfunction
-
-function! unreal#set_config(config) abort
-    let [l:config_state, l:config_target] = s:parse_config_state_and_target(a:config)
-    let g:unreal_config_state = l:config_state
-    let g:unreal_config_target = l:config_target
+function! unreal#set_config(target_name, build_type) abort
+    let g:unreal_config_target = a:target_name
+    let g:unreal_config_state = a:build_type
 endfunction
 
 function! unreal#set_platform(platform) abort
@@ -371,12 +443,12 @@ endfunction
 " Build {{{
 
 function! unreal#get_ubt_args(...) abort
-    " Start with modules we should always build.
-    let l:mod_names = keys(g:unreal_auto_build_modules)
-    let l:mod_args = copy(g:unreal_auto_build_modules)
+    " Start with targets we should always build.
+    let l:mod_names = keys(g:unreal_auto_build_targets)
+    let l:mod_args = copy(g:unreal_auto_build_targets)
 
     " Function arguments are: 
-    " <Project> <Platform> <Config> [<...MainModuleOptions>] [<...GlobalOptions>] <?NoGlobalModules>
+    " <Project> <Platform> <Config> [<...MainTargetOptions>] [<...GlobalOptions>] <?NoGlobalTargets>
     let l:project = g:unreal_project
     if a:0 >= 1 && !empty(a:1)
         let l:project = a:1
@@ -414,21 +486,21 @@ function! unreal#get_ubt_args(...) abort
         let l:mod_names = []
     endif
 
-    " Find the appropriate module for our project.
-    if l:config_target == "Editor"
-        let l:module = unreal#find_project_module_of_type(l:project, "Editor")
-    else
-        let l:module = unreal#find_project_module_of_type(l:project, "Runtime")
+    " Find the appropriate target to build.
+    let l:targets = unreal#find_project_targets_of_type(l:project, l:config_target)
+    if len(l:targets) == 0
+        call unreal#throw("Can't find '".l:config_target."' target in project '".l:project."'")
     endif
-    if empty(l:module)
-        call unreal#throw("Can't find module for target '".l:config_target."' in project: ".l:project)
+    let l:target = l:targets[0]
+    if len(l:targets) > 1
+        call unreal#warning("More than one '".l:config_target."' target in project '".l:project."': ".string(l:targets))
     endif
 
-    " Add the module's arguments to the list.
-    call insert(l:mod_names, l:module["Name"], 0)
-    let l:mod_args[l:module["Name"]] = l:mod_opts
+    " Add the target's arguments to the list.
+    call insert(l:mod_names, l:target["Name"], 0)
+    let l:mod_args[l:target["Name"]] = l:mod_opts
 
-    " Build the argument list for our modules.
+    " Build the argument list for our targets.
     let l:ubt_cmdline = []
     for l:mod_name in l:mod_names
         let l:mod_cmdline = '-Target="'.
@@ -452,6 +524,7 @@ endfunction
 
 function! unreal#build(bang, ...) abort
     let g:__unreal_makeprg_script = "Build"
+    echom string(a:000)
     let g:__unreal_makeprg_args = call('unreal#get_ubt_args', a:000)
     call unreal#run_make("ubuild", a:bang)
 endfunction
@@ -530,21 +603,30 @@ function! unreal#complete_platforms(ArgLead, CmdLine, CursorPos)
 endfunction
 
 function! unreal#complete_configs(ArgLead, CmdLine, CursorPos)
-    call s:cache_unreal_configs()
-    return s:filter_suggestions(a:ArgLead, copy(s:unreal_configs))
+    let l:bits = split(a:CmdLine.'_', ' ')
+    let l:bits = l:bits[1:]  " Remove the `UnrealSetConfig` command from the line.
+    if len(l:bits) <= 1
+        let l:suggestions = copy(g:unreal_config_targets)
+    else
+        let l:suggestions = unreal#get_build_types_for_target(l:bits[0])
+    endif
+    return s:filter_suggestions(a:ArgLead, l:suggestions)
 endfunction
 
 function! unreal#complete_build_args(ArgLead, CmdLine, CursorPos)
     let l:bits = split(a:CmdLine.'_', ' ')
     let l:bits = l:bits[1:]  " Remove the `UnrealBuild` command from the line.
+    let l:fwd_to_state = 0
     if len(l:bits) <= 1
         let l:suggestions = keys(g:unreal_branch_projects)
     elseif len(l:bits) == 2
-        let l:suggestions = copy(g:unreal_platforms)
+        let l:suggestions = copy(g:unreal_config_targets)
     elseif len(l:bits) == 3
-        call s:cache_unreal_configs()
-        let l:suggestions = s:unreal_configs
-    elseif len(l:bits) >= 4
+        let l:suggestions = unreal#get_platforms_for_target(l:bits[1])
+        let l:fwd_to_options = empty(l:suggestions)
+    elseif len(l:bits) == 4 || l:fwd_to_state
+        let l:suggestions = copy(g:unreal_config_states)
+    elseif len(l:bits) >= 5
         let l:suggestions = copy(g:unreal_build_options)
     endif
     return s:filter_suggestions(a:ArgLead, l:suggestions)
