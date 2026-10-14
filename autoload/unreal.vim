@@ -150,7 +150,7 @@ function! unreal#set_branch_dir(branch_dir, ...) abort
             if !empty(l:sln_files)
                 " Vimcrosoft might have auto-found the same solution, already, 
                 " in which case we don't have to set it.
-                if g:vimcrosoft_current_sln != l:sln_files[0]
+                if index(l:sln_files, g:vimcrosoft_current_sln) < 0
                     execute "VimcrosoftSetSln ".fnameescape(l:sln_files[0])
                 endif
                 " Make sure we have our extra compiler args ready.
