@@ -40,7 +40,16 @@ else
 endif
 
 function! unreal#joinpath(...)
-    return join(a:000, s:dirsep)
+    let l:elems = copy(a:000)
+    call filter(l:elems, {idx, val -> val != '' && val != '.'})
+    return join(l:elems, s:dirsep)
+endfunction
+
+function! unreal#win_reg_query(reg_key, reg_value) abort
+    let l:rawout = systemlist(["reg", "query", a:reg_key, "/v", a:reg_value])
+    " rawout[0] is an empty line, rawout[1] is the key being queried, and
+    " rawout[1] contains our answer, in the form: 'ValueName REG_SZ Value'
+    return split(trim(l:rawout[2]), '\s\+', 0)[2]
 endfunction
 
 " }}}
@@ -112,18 +121,60 @@ function! unreal#find_branch_dir(silent) abort
 endfunction
 
 function! unreal#default_branch_dir_finder(path) abort
-    let l:cur = a:path
-    let l:prev = ""
-    while l:cur != l:prev
-        let l:markers = globpath(l:cur, g:unreal_branch_dir_marker, 1, 1)
-        if !empty(l:markers)
-            call unreal#trace("Found marker file: ".l:markers[0])
-            return l:cur
-        endif
-        let l:prev = l:cur
-        let l:cur = fnamemodify(l:cur, ':h')
-    endwhile
+    let l:markers = g:unreal_branch_dir_marker
+    if type(g:unreal_branch_dir_marker) == type("")
+        let l:markers = [g:unreal_branch_dir_marker]
+    endif
+
+    for l:marker in l:markers
+        let l:cur = a:path
+        let l:prev = ""
+        while l:cur != l:prev
+            let l:markers_found = globpath(l:cur, l:marker, 1, 1)
+            if !empty(l:markers_found)
+                call unreal#trace("Found marker file: ".l:markers_found[0])
+                return l:cur
+            endif
+            let l:prev = l:cur
+            let l:cur = fnamemodify(l:cur, ':h')
+        endwhile
+    endfor
     return ""
+endfunction
+
+function! unreal#find_engine_dir(projname) abort
+    let l:proj = g:unreal_branch_projects[a:projname]
+    let l:engver = get(l:proj, "EngineAssociation", "")
+
+    if empty(l:engver)
+        " No engine version, use a hopefully existing local directory.
+        return unreal#joinpath(g:unreal_branch_dir, "Engine")
+    endif
+
+    let l:install_dir = ''
+    if l:engver[0] == '{'
+        " Locally built engine. Look up the install path.
+        if s:iswin
+            let l:install_dir = unreal#win_reg_query(
+                        \"HKEY_CURRENT_USER\\Software\\Epic Games\\Unreal Engine\\Builds",
+                        \l:engver)
+        endif
+    else
+        "" EGS-installed engine. Look up the install path.
+        if s:iswin
+            let l:install_dir = unreal#win_reg_query(
+                        \"HKEY_LOCAL_MACHINE\\SOFTWARE\\EpicGames\\Unreal Engine\\".l:engver,
+                        \"InstalledDirectory")
+        endif
+    endif
+
+    if l:install_dir != ''
+        return unreal#joinpath(l:install_dir, "Engine")
+    else
+        call unreal#throw(
+                    \"Don't know how to look up engine installation directories "
+                    \"on macOS and Linux.")
+    endif
 endfunction
 
 function! unreal#set_branch_dir(branch_dir, ...) abort
@@ -216,6 +267,9 @@ function! unreal#set_project(projname) abort
     endif
 
     let g:unreal_project = l:clean_projname
+    let g:unreal_engine_dir = unreal#find_engine_dir(l:clean_projname)
+    let g:unreal_engine_is_installed = filereadable(unreal#get_engine_path("Build/InstalledBuild.txt"))
+    let $UNREAL_ENGINE_DIR = g:unreal_engine_dir
 
     let l:cached_proj_file = unreal#get_cache_path("LastProject.txt", 1) " Auto-create cache dir.
     call writefile([l:clean_projname], l:cached_proj_file)
@@ -260,32 +314,45 @@ function! unreal#get_branch_projects(branch_dir) abort
     " Get the list of directories to search.
     let l:uprojpaths = unreal#get_branch_project_dirs(a:branch_dir)
     if empty(l:uprojpaths)
-        return {}
+        " No project-dirs, so this is a simple one-project branch. Just find
+        " the project file(s) in the root directory.
+        call unreal#trace(printf("Finding projects in branch: %s", a:branch_dir))
+        let l:search_path = unreal#joinpath(a:branch_dir, "*.uproject")
+        let l:uprojfiles = glob(l:search_path, 1, 1)
+    else
+        " Find project files inside these directories.
+        call unreal#trace(printf("Finding projects in branch: %s (%d search directories)",
+                    \a:branch_dir, len(l:uprojpaths)))
+        let l:uprojfiles = []
+        for l:search_dir in l:uprojpaths
+            let l:search_path = unreal#joinpath(a:branch_dir, l:search_dir, "*", "*.uproject")
+            let l:uprojfiles_for_dir = glob(l:search_path, 1, 1)
+            call extend(l:uprojfiles, l:uprojfiles_for_dir)
+        endfor
     endif
 
-    " Find project files inside these directories.
     let l:projs = {}
-    call unreal#trace(printf("Finding projects in branch: %s (%d search directories)",
-                \a:branch_dir, len(l:uprojpaths)))
-    
-    for l:search_dir in l:uprojpaths
-        let l:uprojfiles = glob(unreal#joinpath(a:branch_dir, l:search_dir, "*", "*.uproject"), 1, 1)
-        for l:uprojfile in l:uprojfiles
-            let l:json = json_decode(join(readfile(l:uprojfile), "\n"))
-            " Let's add extra properties for our own benefit.
-            let l:json["Path"] = l:uprojfile
-            let l:projdir = fnamemodify(l:uprojfile, ':p:h')
-            let l:json["Dir"] = l:projdir
-            let l:projname = fnamemodify(l:uprojfile, ':t:r')
-            let l:json["Name"] = l:projname
-            " Add the new project structure.
-            call unreal#trace("Found project: ".l:projname)
-            let l:projs[l:projname] = l:json
-        endfor
+    for l:uprojfile in l:uprojfiles
+        " Add the new project structure.
+        let l:json = unreal#build_branch_project_info(l:uprojfile)
+        let l:projname = l:json["Name"]
+        call unreal#trace("Found project: ".l:projname)
+        let l:projs[l:projname] = l:json
     endfor
 
     call unreal#trace(printf("Found %d projects", len(l:projs)))
     return l:projs
+endfunction
+
+function! unreal#build_branch_project_info(uprojfile) abort
+    let l:json = json_decode(join(readfile(a:uprojfile), "\n"))
+    " Let's add extra properties for our own benefit.
+    let l:json["Path"] = a:uprojfile
+    let l:projdir = fnamemodify(a:uprojfile, ':p:h')
+    let l:json["Dir"] = l:projdir
+    let l:projname = fnamemodify(a:uprojfile, ':t:r')
+    let l:json["Name"] = l:projname
+    return l:json
 endfunction
 
 function! unreal#get_project_targets(project) abort
@@ -507,6 +574,9 @@ function! unreal#get_ubt_args(...) abort
                     \l:mod_name.' '.
                     \l:platform.' '.
                     \l:config_state
+        if !empty(l:project)
+            let l:mod_cmdline .= ' -Project='.g:unreal_branch_projects[l:project]["Path"]
+        endif
         let l:mod_arg = l:mod_args[l:mod_name]
         if !empty(l:mod_arg)
             let l:mod_cmdline .= ' '.join(l:mod_arg, ' ')
@@ -555,9 +625,9 @@ function! unreal#generate_project_files() abort
         " and the compilation database generation one after the other. Then we
         " pass that to our little script wrapper.
         let l:genscriptpath = shellescape(
-                    \unreal#get_script_path("Engine/Build/BatchFiles/GenerateProjectFiles"))
+                    \unreal#get_engine_script_path("Build/BatchFiles/GenerateProjectFiles"))
         let l:buildscriptpath = shellescape(
-                    \unreal#get_script_path("Engine/Build/BatchFiles/Build"))
+                    \unreal#get_engine_script_path("Build/BatchFiles/Build"))
         let l:buildscriptargs = 
                     \unreal#get_ubt_args('', '', '', [], ['-allmodules', '-Mode=GenerateClangDatabase'], 1)
 
@@ -665,13 +735,17 @@ endfunction
 
 let s:builds_in_progress = []
 
-function! unreal#get_script_path(scriptname, ...) abort
+function! unreal#get_engine_path(relpath, ...) abort
     if s:iswin
-        let l:name = substitute(a:scriptname, '/', "\\", 'g')
+        let l:clean_relpath = substitute(a:relpath, '/', "\\", 'g')
     else
-        let l:name = a:scriptname
+        let l:clean_relpath = a:relpath
     endif
-    return g:unreal_branch_dir.s:dirsep.l:name.s:scriptext
+    return g:unreal_engine_dir.s:dirsep.l:clean_relpath
+endfunction
+
+function! unreal#get_engine_script_path(scriptname, ...) abort
+    return unreal#get_engine_path(a:scriptname.s:scriptext)
 endfunction
 
 " }}}

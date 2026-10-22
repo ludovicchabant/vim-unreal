@@ -15,13 +15,15 @@ endif
 
 let g:unreal_trace = get(g:, 'unreal_trace', 0)
 
-let g:unreal_branch_dir_marker = get(g:, 'unreal_branch_dir_marker', '*.uprojectdirs')
+let g:unreal_branch_dir_marker = get(g:, 'unreal_branch_dir_marker', ['*.uprojectdirs', '*.uproject'])
 let g:unreal_branch_dir_finder = get(g:, 'unreal_branch_dir_finder', '')
 let g:unreal_auto_find_project = get(g:, 'unreal_auto_find_project', 0)
 
 let g:unreal_branch_projects = {}
 
 let g:unreal_branch_dir = get(g:, 'unreal_branch_dir', '')
+let g:unreal_engine_dir = get(g:, 'unreal_engine_dir', '')
+let g:unreal_engine_is_installed = get(g:, 'unreal_engine_is_installed', 0)
 let g:unreal_project = get(g:, 'unreal_project', '')
 let g:unreal_platform = get(g:, 'unreal_platform', 'Win64')
 let g:unreal_config_state = get(g:, 'unreal_config_state', 'Development')
