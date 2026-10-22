@@ -11,7 +11,7 @@ let s:keepcpo = &cpo
 
 let s:scriptname = get(g:, '__unreal_makeprg_script', 'Build')
 let s:prgpath = shellescape(
-            \unreal#get_engine_path("Build/BatchFiles/".s:scriptname))
+            \unreal#get_engine_script_path("Build/BatchFiles/".s:scriptname))
 let s:prgargs = map(
             \copy(get(g:, '__unreal_makeprg_args', [])),
             \{idx, val -> escape(val, ' \"')})
